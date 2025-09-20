@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@chainlink/contracts/src/v0.8/VRF/VRFConsumerBaseV2.sol";
+
+// Pastikan untuk mengganti 'VRF_COORDINATOR_ADDRESS', 'KEY_HASH', dan 'TOKEN_ADDRESS'
+// dengan nilai yang valid di Base Mainnet
+contract SlotCaster is VRFConsumerBaseV2 {
+    event PlayerSpun(address indexed player, uint256 betAmount, uint256 requestId);
+    event PlayerWon(address indexed player, uint256 winAmount, string winType);
+
+    IERC20 public slotToken;
+    uint256 public s_subscriptionId;
+    bytes32 public s_keyHash;
+
+    mapping(uint256 => address) public s_requests;
+
+    constructor(uint64 subscriptionId, bytes32 keyHash, address tokenAddress, address vrfCoordinator)
+        VRFConsumerBaseV2(vrfCoordinator)
+    {
+        s_subscriptionId = subscriptionId;
+        s_keyHash = keyHash;
+        slotToken = IERC20(tokenAddress);
+    }
+
+    function spin(uint256 betAmount) public {
+        // Logika untuk putaran berbayar atau putaran gratis
+        slotToken.transferFrom(msg.sender, address(this), betAmount);
+
+        uint256 requestId = requestRandomness(s_keyHash, s_subscriptionId, 1);
+        s_requests[requestId] = msg.sender;
+        
+        emit PlayerSpun(msg.sender, betAmount, requestId);
+    }
+
+    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
+        address player = s_requests[requestId];
+        require(player != address(0), "Request ID not found");
+
+        uint256 randomness = randomWords[0];
+        
+        // --- LOGIKA PERHITUNGAN KEMENANGAN ---
+        // Contoh sederhana untuk demonstrasi
+        uint256 winAmount = (randomness % 100) > 90 ? 100 * 10**18 : 0; // 10% peluang menang
+        string memory winType = (winAmount > 0) ? "BIG WIN" : "NO WIN";
+
+        if (winAmount > 0) {
+            slotToken.transfer(player, winAmount);
+            emit PlayerWon(player, winAmount, winType);
+        }
+    }
+}
